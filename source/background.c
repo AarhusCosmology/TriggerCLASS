@@ -273,6 +273,10 @@ int background_functions(
   /* scalar field quantities */
   double phi, phi_prime;
 
+  /*New EDE*/
+  double rho_NEDE_decay;
+
+
   /** - initialize local variables */
   a = pvecback_B[pba->index_bi_a];
   rho_tot = 0.;
@@ -347,6 +351,30 @@ int background_functions(
     //printf(" a= %e, Omega_scf = %f, \n ",a_rel, pvecback[pba->index_bg_rho_scf]/rho_tot );
   }
 
+    /* New EDE trigger field */
+  /*this function is called at every integration step in order to calculate scalar field related quantities like rho_trigger and so on*/
+  if (pba->has_NEDE_trigger == _TRUE_) {
+    //if (-a_rel*0.99 <= pba->a_decay || pba->a_decay ==0 ) {
+    phi = pvecback_B[pba->index_bi_phi_trigger];
+    phi_prime = pvecback_B[pba->index_bi_phi_prime_trigger];
+    //if (a_rel>0.99)
+    //printf("phi: %f",phi);
+    pvecback[pba->index_bg_phi_trigger] = phi; // value of the trigger field phi
+    pvecback[pba->index_bg_phi_prime_trigger] = phi_prime; // value of the trigger field derivative wrt conformal time
+    pvecback[pba->index_bg_V_trigger] = V_trigger(pba,phi); //V_scf(pba,phi); //write here potential as function of phi
+    pvecback[pba->index_bg_dV_trigger] = dV_trigger(pba,phi); // dV_scf(pba,phi); //potential' as function of phi
+    pvecback[pba->index_bg_ddV_trigger] = ddV_trigger(pba,phi); // ddV_scf(pba,phi); //potential'' as function of phi
+    pvecback[pba->index_bg_rho_trigger] = (phi_prime*phi_prime/(2*a*a) + V_trigger(pba,phi))/3.; // energy of the trigger field. The field units are set automatically by setting the initial conditions
+    pvecback[pba->index_bg_p_trigger] =(phi_prime*phi_prime/(2*a*a) - V_trigger(pba,phi))/3.; // pressure of the trigger field
+    rho_tot += pvecback[pba->index_bg_rho_trigger];
+    p_tot += pvecback[pba->index_bg_p_trigger];
+    dp_dloga += 0.0; /** <-- This depends on a_prime_over_a, so we cannot add it now! */
+    //divide relativistic & nonrelativistic (not very meaningful for oscillatory models)
+    rho_r += 3.*pvecback[pba->index_bg_p_trigger]; //field pressure contributes radiation
+    rho_m += pvecback[pba->index_bg_rho_trigger] - 3.* pvecback[pba->index_bg_p_trigger]; //the rest contributes matter
+    //printf(" a= %e, Omega_scf = %f, \n ",a_rel, pvecback[pba->index_bg_rho_scf]/rho_tot );
+  }
+
   /* ncdm */
   if (pba->has_ncdm == _TRUE_) {
 
@@ -418,6 +446,31 @@ int background_functions(
     rho_r += pvecback[pba->index_bg_rho_ur];
   }
 
+  /* New EDE*/
+  /* Here we calculate bg quantities of the New EDE fluid like its energy density at every time step, we have to check if we are before or after the phase transition.*/
+  if (pba->has_NEDE == _TRUE_) {
+
+    if (a_rel < pba->a_decay || pba->a_decay ==0 ) {
+      /*w = -1 phase*/
+      /*Note the class convention according to which 3 Mpl^2 is absorbed in rho, i.e. rho_crit = H0^2. */
+      rho_NEDE_decay = pba->Omega_NEDE * pow(pba->H0,2);
+      /* Save value of rho in array for later use.*/
+      pvecback[pba->index_bg_rho_NEDE] = rho_NEDE_decay;
+
+      p_tot -= rho_NEDE_decay; /*add pressure contribution*/
+      rho_tot += rho_NEDE_decay; /*add energy contribution*/
+    }
+    else {
+      /* decay phase with w > 1/3 */
+      rho_NEDE_decay = (pba->Omega_NEDE ) * pow(pba->H0,2) * pow(pba->a_decay / a_rel, 3.+pba->three_eos_NEDE);
+      pvecback[pba->index_bg_rho_NEDE] = rho_NEDE_decay;
+      p_tot += (pba->three_eos_NEDE / 3.)*rho_NEDE_decay;
+      rho_tot += rho_NEDE_decay;
+      dp_dloga += (-(3.+pba->three_eos_NEDE)*pba->three_eos_NEDE/3.)*pvecback[pba->index_bg_rho_NEDE];
+    }
+  }
+
+
   /** - compute expansion rate H from Friedmann equation: this is the
       only place where the Friedmann equation is assumed. Remember
       that densities are all expressed in units of \f$ [3c^2/8\pi G] \f$, ie
@@ -426,6 +479,18 @@ int background_functions(
 
   /** - compute derivative of H with respect to conformal time */
   pvecback[pba->index_bg_H_prime] = - (3./2.) * (rho_tot + p_tot) * a + pba->K/a;
+
+  /* Total energy density*/
+  pvecback[pba->index_bg_rho_tot] = rho_tot;
+
+  /* Total pressure */
+  pvecback[pba->index_bg_p_tot] = p_tot;
+
+  /** - compute critical density */
+  rho_crit = rho_tot-pba->K/a/a;
+  class_test(rho_crit <= 0.,
+             pba->error_message,
+             "rho_crit = %e instead of strictly positive",rho_crit);
 
   /** - compute relativistic density to total density ratio */
   pvecback[pba->index_bg_Omega_r] = rho_r / rho_tot;
@@ -835,9 +900,22 @@ int background_indices(
   pba->has_fld = _FALSE_;
   pba->has_ur = _FALSE_;
   pba->has_curvature = _FALSE_;
+  pba->has_NEDE = _FALSE_;
+  pba->has_NEDE_pert = _FALSE_;
+  pba->has_NEDE_trigger = _FALSE_;
 
   if (pba->Omega0_cdm != 0.)
     pba->has_cdm = _TRUE_;
+
+  if (pba->Omega_NEDE != 0.) {
+    /*Turn on NEDE*/
+    pba->has_NEDE = _TRUE_;
+    /*Turn on perturbations in NEDE*/
+    pba->has_NEDE_pert = _TRUE_;
+    /*Here we decide if we include a trigger field*/
+    if (pba->NEDE_trigger_ini != 0.)
+      pba->has_NEDE_trigger = _TRUE_;
+  }
 
   if (pba->Omega0_ncdm_tot != 0.)
     pba->has_ncdm = _TRUE_;
@@ -923,8 +1001,18 @@ int background_indices(
 
   /* - put here additional ingredients that you want to appear in the
      normal vector */
-  /*    */
-  /*    */
+  /* - index for NEDE   */
+  class_define_index(pba->index_bg_rho_NEDE,pba->has_NEDE,index_bg,1);
+  /* - index for trigger   */
+  class_define_index(pba->index_bg_phi_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_phi_prime_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_V_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_dV_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_ddV_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_rho_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_p_trigger,pba->has_NEDE_trigger,index_bg,1);
+  class_define_index(pba->index_bg_p_prime_trigger,pba->has_NEDE_trigger,index_bg,1);
+
 
   /* - end of indices in the normal vector of background values */
   pba->bg_size_normal = index_bg;
@@ -998,6 +1086,13 @@ int background_indices(
   /* -> Second order equation for growth factor */
   class_define_index(pba->index_bi_D,_TRUE_,index_bi,1);
   class_define_index(pba->index_bi_D_prime,_TRUE_,index_bi,1);
+
+
+  /* -> trigger field and its derivative wrt conformal time */
+  // it is important that these two components appear at the end of the vector (but still before the conformal time) because we stop integrating them shortly after the decay (they are sub-dominant).
+  class_define_index(pba->index_bi_phi_trigger,pba->has_NEDE_trigger,index_bi,1);
+  class_define_index(pba->index_bi_phi_prime_trigger,pba->has_NEDE_trigger,index_bi,1);
+
 
   /* -> index for conformal time in vector of variables to integrate */
   class_define_index(pba->index_bi_tau,_TRUE_,index_bi,1);
@@ -1595,6 +1690,10 @@ int background_solve(
   int last_index=0;
   /* comoving radius coordinate in Mpc (equal to conformal distance in flat case) */
   double comoving_radius=0.;
+  /* Reshift interval around decay of NEDE for which the integration is made finer. */
+  double delta_z;
+  double a;
+  double d;
 
   bpaw.pba = pba;
   class_alloc(pvecback,pba->bg_size*sizeof(double),pba->error_message);
@@ -1629,6 +1728,12 @@ int background_solve(
   /* initialize the counter for the number of steps */
   pba->bt_size=0;
 
+  /*New EDE*/
+
+  /*reset deycay_flag before integration loop starts, decay_flage == _FALSE_ means that the decay has not yet taken place.*/
+  pba->decay_flag = _FALSE_;
+
+
   /** - loop over integration steps: call background_functions(), find step size, save data in growTable with gt_add(), perform one step with generic_integrator(), store new value of tau */
 
   while (pvecback_integration[pba->index_bi_a] < pba->a_today) {
@@ -1649,9 +1754,56 @@ int background_solve(
       /* no possible segmentation fault here: non-zeroness of "a" has been checked in background_functions() */
     }
 
-    class_test((tau_end-tau_start)/tau_start < ppr->smallest_allowed_variation,
+
+
+    /*New EDE*/
+
+    if (pba->has_NEDE == _TRUE_){
+      a=pvecback_integration[pba->index_bi_a];
+
+      /*Check if we need to track evolution of scalar field, i.e. if we are still before decay. 1.01 is a safety factor to make sure the decay has happend. After the decay we neglect the trigger field as it is dub-dominant in the relevant parameter regime. */
+       if ((pba->NEDE_trigger_mass * pba->Bubble_trigger_H_over_m > pvecback[pba->index_bg_H]) *1.01 && (pba->decay_flag == _TRUE_) && pba->has_NEDE_trigger) {
+	 pvecback_integration[pba->index_bi_phi_trigger] = 0.;
+	 pvecback_integration[pba->index_bi_phi_prime_trigger] = 0.;
+	 // tell the integrator to integrat two variables less.
+	 //gi.n=pba->bi_size-3;
+      }
+
+       /* Check if NEDE has decayed. If it has, set decay_flag=_TRUE_ and store the values of the redshift, scale factor and the energy of the trigger field. */
+       if ((pba->NEDE_trigger_mass * pba->Bubble_trigger_H_over_m > pvecback[pba->index_bg_H])&&(pba->decay_flag == _FALSE_)) {
+	 pba->decay_flag = _TRUE_;
+	 pba->z_decay = 1. /a -1.;
+	 pba->a_decay = a;
+	 if (pba->has_NEDE_trigger)
+	   pba->Omega_trigger_decay = pvecback[pba->index_bg_rho_trigger] /  pow(pba->H0,2);
+	 else
+	   pba->Omega_trigger_decay = 0.;
+
+	 if (pba->background_verbose > 0){
+	   printf("New EDE decayed at redshift: %f ; fraction New EDE: %f; fraction trigger field: %e \n",pba->z_decay,  pba->Omega_NEDE * pow(pba->H0,2) / (pow(pvecback[pba->index_bg_H],2)), pba->Omega_trigger_decay* pow(pba->H0,2) / pow(pvecback[pba->index_bg_H],2) );
+ 	 }
+       }
+       /*New EDE:  make integration finer around decay time; this increases the precision of the code a lot. d is the size of the interval for which we make the integration finer. We smothely turn the resolution enhancement on and of with an exponential. The resolution enhancement is controlled by ppr->decay_res_enhancement*/
+       delta_z=2*ppr->back_integration_stepsize/a;
+       if ((1./a-1. <   pba->z_decay + delta_z) && (1./a-1. > pba->z_decay - delta_z) && (pba->z_decay >1.)  ){
+	 //printf("decay: %f, a: %e, z_decay: %e, counter: %d \n", 1./a - 1.,a,pba->z_decay,d);
+	 d= abs(1./a-1.-pba->z_decay)/delta_z;
+	 tau_end = tau_start + ppr->back_integration_stepsize/(1+ppr->decay_res_enhancement*exp(-d*6)) / (pvecback_integration[pba->index_bi_a]*pvecback[pba->index_bg_H]);
+       }
+    }
+
+    /*class_test((tau_end-tau_start)/tau_start < ppr->smallest_allowed_variation,
                pba->error_message,
-               "integration step: relative change in time =%e < machine precision : leads either to numerical error or infinite loop",(tau_end-tau_start)/tau_start);
+               "integration step: relative change in time =%e < machine precision : leads either to numerical error or infinite loop",(tau_end-tau_start)/tau_start);*/
+
+    /*NEDE: If time step too small set it to machine precission, rather than throwing an error, which can disrupt MCMC runs.*/
+
+    if ((tau_end-tau_start)/tau_start < ppr->smallest_allowed_variation){
+      tau_end = tau_start + ppr->smallest_allowed_variation*tau_start;
+      if (pba->background_verbose > 0)
+	printf("Final integration step adjusted.");
+    }
+
 
     /* -> save data in growTable */
     class_call(gt_add(&gTable,_GT_END_,(void *) pvecback_integration,sizeof(double)*pba->bi_size),
@@ -1821,6 +1973,16 @@ int background_solve(
                -pba->background_table[pba->index_bg_rho_g])
     /(7./8.*pow(4./11.,4./3.)*pba->background_table[pba->index_bg_rho_g]);
 
+    /*New EDE*/ /*Calculate Omega of trigger and EDE today*/
+  if (pba->has_NEDE_trigger == _TRUE_ && pba->has_NEDE ==_TRUE_){
+    pba->Omega0_trigger = pvecback[pba->index_bg_rho_trigger]/pvecback[pba->index_bg_rho_crit];
+  }
+
+  if (pba->has_NEDE ==_TRUE_){
+    pba->Omega0_NEDE = pvecback[pba->index_bg_rho_NEDE]/pvecback[pba->index_bg_rho_crit];
+  }
+
+
   /** - done */
   if (pba->background_verbose > 0) {
     printf(" -> age = %f Gyr\n",pba->age);
@@ -1828,6 +1990,8 @@ int background_solve(
   }
 
   if (pba->background_verbose > 2) {
+    printf(" -> pba->Neff = %f\n",pba->Neff);
+
     if ((pba->has_dcdm == _TRUE_)&&(pba->has_dr == _TRUE_)){
       printf("    Decaying Cold Dark Matter details: (DCDM --> DR)\n");
       printf("     -> Omega0_dcdm = %f\n",pba->Omega0_dcdm);
@@ -1836,6 +2000,21 @@ int background_solve(
              pba->Omega0_dr+pba->Omega0_dcdm,pba->Omega0_dcdmdr);
       printf("     -> Omega_ini_dcdm/Omega_b = %f\n",pba->Omega_ini_dcdm/pba->Omega0_b);
     }
+
+    if  (pba->has_NEDE ==_TRUE_){
+
+      printf("  -> New EDE details:\n");
+      printf("     -> Percolation trigger (H/m): %f \n", pba->Bubble_trigger_H_over_m);
+      printf("     -> closure check: H/H0-1: %e \n",pvecback[pba->index_bg_H]/pba->H0-1);
+      printf("     -> eos NEDE: omega = %e \n",pba->three_eos_NEDE/3.);
+
+      printf("     -> resolution_enhancement: %e \n",ppr->decay_res_enhancement);
+      if (pba->has_NEDE_trigger == _TRUE_)
+	printf("     -> Omega_trigger = %g, Trigger_ini = %g \n",
+	       pvecback[pba->index_bg_rho_trigger]/pvecback[pba->index_bg_rho_crit],pba->NEDE_trigger_ini);
+    }
+
+
     if (pba->has_scf == _TRUE_){
       printf("    Scalar field details:\n");
       printf("     -> Omega_scf = %g, wished %g\n",
@@ -1999,6 +2178,18 @@ int background_initial_conditions(
    * - Check equations and signs. Sign of phi_prime?
    * - is rho_ur all there is early on?
    */
+
+
+  if(pba->has_NEDE_trigger == _TRUE_ && pba->has_NEDE == _TRUE_){
+
+    /*New EDE*/ /*Here we specify the initial conditions for the trigger field in slow roll approximation. We simply set it on the attractor. We could also have started with zero, as the attractor is approached quickly*/
+  /* phi'_ini = -1/5 * phi_ini a^2 m^2  / (a H) where H = sqrt(rho) ins class conventions. */
+    pvecback_integration[pba->index_bi_phi_trigger] = pba->phi_ini_trigger;
+    pvecback_integration[pba->index_bi_phi_prime_trigger] = -1./5. * pba->phi_ini_trigger *pow(pba->NEDE_trigger_mass ,2) / pow(rho_rad,0.5) * a;
+    // printf("initial value: %e; \n",pvecback_integration[pba->index_bi_phi_prime_scf]);
+  }
+
+
   if(pba->has_scf == _TRUE_){
     scf_lambda = pba->scf_parameters[0];
     if(pba->attractor_ic_scf == _TRUE_){
@@ -2183,6 +2374,16 @@ int background_output_titles(struct background * pba,
   class_store_columntitle(titles,"(.)rho_dcdm",pba->has_dcdm);
   class_store_columntitle(titles,"(.)rho_dr",pba->has_dr);
 
+
+  /* New EDE */
+  /* titles for printing in file */
+  class_store_columntitle(titles,"(.)rho_NEDE",pba->has_NEDE);
+  class_store_columntitle(titles,"(.)rho_trigger",pba->has_NEDE_trigger);
+  class_store_columntitle(titles,"(.)p_trigger",pba->has_NEDE_trigger);
+  class_store_columntitle(titles,"(.)p_prime_trigger",pba->has_NEDE_trigger);
+  class_store_columntitle(titles,"phi_trigger",pba->has_NEDE_trigger);
+  class_store_columntitle(titles,"phi'_trigger",pba->has_NEDE_trigger);
+
   class_store_columntitle(titles,"(.)rho_scf",pba->has_scf);
   class_store_columntitle(titles,"(.)p_scf",pba->has_scf);
   class_store_columntitle(titles,"phi_scf",pba->has_scf);
@@ -2234,6 +2435,16 @@ int background_output_data(
     class_store_double(dataptr,pvecback[pba->index_bg_rho_crit],_TRUE_,storeidx);
     class_store_double(dataptr,pvecback[pba->index_bg_rho_dcdm],pba->has_dcdm,storeidx);
     class_store_double(dataptr,pvecback[pba->index_bg_rho_dr],pba->has_dr,storeidx);
+
+    /*New EDE*/
+    /*decide which values are printed in file*/
+    class_store_double(dataptr,pvecback[pba->index_bg_rho_NEDE],pba->has_NEDE,storeidx);
+    class_store_double(dataptr,pvecback[pba->index_bg_rho_trigger],pba->has_NEDE_trigger,storeidx);
+    class_store_double(dataptr,pvecback[pba->index_bg_p_trigger],pba->has_NEDE_trigger,storeidx);
+    class_store_double(dataptr,pvecback[pba->index_bg_p_prime_trigger],pba->has_NEDE_trigger,storeidx);
+    class_store_double(dataptr,pvecback[pba->index_bg_phi_trigger],pba->has_NEDE_trigger,storeidx);
+    class_store_double(dataptr,pvecback[pba->index_bg_phi_prime_trigger],pba->has_NEDE_trigger,storeidx);
+
 
     class_store_double(dataptr,pvecback[pba->index_bg_rho_scf],pba->has_scf,storeidx);
     class_store_double(dataptr,pvecback[pba->index_bg_p_scf],pba->has_scf,storeidx);
@@ -2351,8 +2562,15 @@ int background_derivs(
        + y[pba->index_bi_a]*dV_scf(pba,y[pba->index_bi_phi_scf])) ;
   }
 
+   if (pba->has_NEDE_trigger == _TRUE_){
+     /** - Scalar field equation: \f$ \phi'' + 2 a H \phi' + a^2 dV = 0 \f$  (note H is wrt cosmic time) */
+     dy[pba->index_bi_phi_trigger] = y[pba->index_bi_phi_prime_trigger];
+     dy[pba->index_bi_phi_prime_trigger] = - y[pba->index_bi_a] *
+       (2*pvecback[pba->index_bg_H]*y[pba->index_bi_phi_prime_trigger]
+        + y[pba->index_bi_a]*dV_trigger(pba,y[pba->index_bi_phi_trigger])) ;
+   }
 
-  return _SUCCESS_;
+   return _SUCCESS_;
 
 }
 
@@ -2480,3 +2698,29 @@ double ddV_scf(
                double phi) {
   return ddV_e_scf(pba,phi)*V_p_scf(pba,phi) + 2*dV_e_scf(pba,phi)*dV_p_scf(pba,phi) + V_e_scf(pba,phi)*ddV_p_scf(pba,phi);
 }
+
+
+/*New EDE*/
+/*Here we implement out trigger potential (a simple quadratic) and its derivatives*/
+
+double V_trigger(
+		 struct background *pba,
+		 double phi) {
+  return  1./2. * pba->NEDE_trigger_mass * pba->NEDE_trigger_mass * phi*phi;
+}
+
+
+
+double dV_trigger(
+		  struct background *pba,
+		  double phi) {
+  return pba->NEDE_trigger_mass * pba->NEDE_trigger_mass * phi;
+}
+
+
+double ddV_trigger(
+		   struct background *pba,
+		   double phi) {
+  return pba->NEDE_trigger_mass * pba->NEDE_trigger_mass;
+}
+
