@@ -3373,6 +3373,9 @@ int input_default_params(
 
 int input_default_precision ( struct precision * ppr ) {
 
+  ppr->decay_res_enhancement = 0.;
+  ppr->sub_dom_cond = 0.;
+
   /** Initialize presicion parameters for different structures:
    * - parameters related to the background
    */

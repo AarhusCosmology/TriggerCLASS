@@ -348,6 +348,8 @@ struct precision
   /** @name - parameters related to the background */
   //@{
 
+  double decay_res_enhancement;
+
   /**
    * default initial value of scale factor in background integration, in
    * units of scale factor today
@@ -501,6 +503,8 @@ struct precision
   /** @name - parameters related to the perturbation */
 
   //@{
+
+  double sub_dom_cond;
 
   enum evolver_type evolver; /**< which type of evolver for integrating perturbations (Runge-Kutta? Stiff?...) */
 

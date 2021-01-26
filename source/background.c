@@ -368,7 +368,6 @@ int background_functions(
     pvecback[pba->index_bg_p_trigger] =(phi_prime*phi_prime/(2*a*a) - V_trigger(pba,phi))/3.; // pressure of the trigger field
     rho_tot += pvecback[pba->index_bg_rho_trigger];
     p_tot += pvecback[pba->index_bg_p_trigger];
-    dp_dloga += 0.0; /** <-- This depends on a_prime_over_a, so we cannot add it now! */
     //divide relativistic & nonrelativistic (not very meaningful for oscillatory models)
     rho_r += 3.*pvecback[pba->index_bg_p_trigger]; //field pressure contributes radiation
     rho_m += pvecback[pba->index_bg_rho_trigger] - 3.* pvecback[pba->index_bg_p_trigger]; //the rest contributes matter
@@ -466,7 +465,6 @@ int background_functions(
       pvecback[pba->index_bg_rho_NEDE] = rho_NEDE_decay;
       p_tot += (pba->three_eos_NEDE / 3.)*rho_NEDE_decay;
       rho_tot += rho_NEDE_decay;
-      dp_dloga += (-(3.+pba->three_eos_NEDE)*pba->three_eos_NEDE/3.)*pvecback[pba->index_bg_rho_NEDE];
     }
   }
 
@@ -479,18 +477,6 @@ int background_functions(
 
   /** - compute derivative of H with respect to conformal time */
   pvecback[pba->index_bg_H_prime] = - (3./2.) * (rho_tot + p_tot) * a + pba->K/a;
-
-  /* Total energy density*/
-  pvecback[pba->index_bg_rho_tot] = rho_tot;
-
-  /* Total pressure */
-  pvecback[pba->index_bg_p_tot] = p_tot;
-
-  /** - compute critical density */
-  rho_crit = rho_tot-pba->K/a/a;
-  class_test(rho_crit <= 0.,
-             pba->error_message,
-             "rho_crit = %e instead of strictly positive",rho_crit);
 
   /** - compute relativistic density to total density ratio */
   pvecback[pba->index_bg_Omega_r] = rho_r / rho_tot;
