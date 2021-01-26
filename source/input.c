@@ -63,6 +63,18 @@ int input_init_from_arguments(
   input_file[0]='\0';
   precision_file[0]='\0';
 
+  /************************/
+  /* For use with CONCEPT */
+  /************************/
+  pba->node = 0;
+  pba->num_threads = -1;
+  pba->message = (char*)malloc(1*sizeof(char));
+  pba->message[0] = '\0';
+  /**************************/
+  /* ^For use with CONCEPT^ */
+  /**************************/
+
+
   /** - If some arguments are passed, identify eventually some 'xxx.ini'
       and 'xxx.pre' files, and store their name. */
 

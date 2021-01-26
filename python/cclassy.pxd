@@ -67,6 +67,17 @@ cdef extern from "class.h":
         double Omega0_k
         int bt_size
 
+        ########################
+        # For use with CONCEPT #
+        ########################
+        int node
+        int num_threads
+        char* message
+        ##########################
+        # ^For use with CONCEPT^ #
+        ##########################
+
+
     cdef struct thermo:
         ErrorMsg error_message
         int th_size

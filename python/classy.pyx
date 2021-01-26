@@ -1,3 +1,4 @@
+# cython: language_level=3
 """
 .. module:: classy
     :synopsis: Python wrapper around CLASS
@@ -113,7 +114,19 @@ cdef class Class:
             "output":"tCl mPk",}
         self.set(**_pars)
 
-    def __cinit__(self, default=False):
+    def __cinit__(self,         default=False, node=0, num_threads=-1, message=''):         # Changed for use with CONCEPT
+
+        ########################
+        # For use with CONCEPT #
+        ########################
+        self.ba.node = <int>node
+        self.ba.num_threads = <int>num_threads
+        self.ba.message = <char*>malloc((len(message) + 1)*sizeof(char))
+        strcpy(self.ba.message, message.encode())
+        ##########################
+        # ^For use with CONCEPT^ #
+        ##########################
+
         cpdef char* dumc
         self.ready = False
         self.allocated = False

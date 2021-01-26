@@ -2520,6 +2520,17 @@ int background_derivs(
   rho_M = pvecback[pba->index_bg_rho_b];
   if (pba->has_cdm)
     rho_M += pvecback[pba->index_bg_rho_cdm];
+
+  /************************/
+  /* For use with CONCEPT */
+  /************************/
+  /* Include dcdm in growth factor */
+  if (pba->has_dcdm == _TRUE_)
+    rho_M += pvecback[pba->index_bg_rho_dcdm];
+  /**************************/
+  /* ^For use with CONCEPT^ */
+  /**************************/
+
   dy[pba->index_bi_D] = y[pba->index_bi_D_prime];
   dy[pba->index_bi_D_prime] = -a*H*y[pba->index_bi_D_prime] + 1.5*a*a*rho_M*y[pba->index_bi_D];
 

@@ -402,6 +402,20 @@ struct background
   ErrorMsg error_message; /**< zone for writing error messages */
 
   //@}
+
+  /************************/
+  /* For use with CONCEPT */
+  /************************/
+  /**
+   * Used to set number of OpenMP threads and to print
+   * status updates during perturbation computations.
+   */
+  int node, num_threads;
+  char* message;
+  /**************************/
+  /* ^For use with CONCEPT^ */
+  /**************************/
+
 };
 
 /**
