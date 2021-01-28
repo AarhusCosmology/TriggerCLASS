@@ -7822,6 +7822,28 @@ int perturb_print_variables(double tau,
         *pvecback[pba->index_bg_phi_prime_scf]
         - 2./3.*pvecback[pba->index_bg_dV_scf]*pvecback[pba->index_bg_phi_prime_scf];
     }
+
+    // Inserted after patch BEGIN
+    /* NEDE contribution */
+    if (pba->has_NEDE == _TRUE_) {
+      if (a < pba->a_decay || pba->a_decay == 0) {
+        /*w = -1 phase*/
+        p_tot_prime += 0.;
+      }
+      else {
+        /* decay phase with w > 1/3 */
+        double dp_dloga_NEDE = (-(3.+pba->three_eos_NEDE)*pba->three_eos_NEDE/3.)*pvecback[pba->index_bg_rho_NEDE];
+        p_tot_prime += a*H*dp_dloga_NEDE;
+      }
+    }
+    /* New EDE trigger field */
+    if (pba->has_NEDE_trigger == _TRUE_){
+      /** The contribution of the trigger field was not added to dp_dloga, add p_scf_prime here: */
+      p_tot_prime += pvecback[pba->index_bg_p_prime_trigger];
+    }
+    // Inserted after patch BEGIN
+
+
     /* Lambda has constant pressure */
     double H_T_prime = 3.*a*H/rho_plus_p_tot*(
       - ppw->delta_p
