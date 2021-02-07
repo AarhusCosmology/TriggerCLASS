@@ -478,6 +478,13 @@ int background_functions(
   /** - compute derivative of H with respect to conformal time */
   pvecback[pba->index_bg_H_prime] = - (3./2.) * (rho_tot + p_tot) * a + pba->K/a;
 
+  /* The derivative of the trigger pressure was not computed above
+     as this needs H. Compute it now. */
+  if (pba->has_NEDE_trigger == _TRUE_){
+    pvecback[pba->index_bg_p_prime_trigger] = pvecback[pba->index_bg_phi_prime_trigger]*
+      (-pvecback[pba->index_bg_phi_prime_trigger]*pvecback[pba->index_bg_H]/a-2./3.*pvecback[pba->index_bg_dV_trigger]);
+  }
+
   /** - compute relativistic density to total density ratio */
   pvecback[pba->index_bg_Omega_r] = rho_r / rho_tot;
 
