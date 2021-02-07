@@ -7838,8 +7838,16 @@ int perturb_print_variables(double tau,
     }
     /* New EDE trigger field */
     if (pba->has_NEDE_trigger == _TRUE_){
-      /** The contribution of the trigger field was not added to dp_dloga, add p_scf_prime here: */
-      p_tot_prime += pvecback[pba->index_bg_p_prime_trigger];
+      /* Need to be careful as pvecback[pba->index_bg_p_prime_trigger]
+         (and other trigger bg quantities) is not set after decay. */
+      double p_prime_trigger;
+      if (a < pba->a_decay || pba->a_decay == 0) {
+        p_prime_trigger = pvecback[pba->index_bg_p_prime_trigger];
+      }
+      else {
+        p_prime_trigger = 0.;
+      }
+      p_tot_prime += p_prime_trigger;
     }
     // Inserted after patch BEGIN
 
